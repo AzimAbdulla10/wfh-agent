@@ -4,9 +4,77 @@ import sys
 import os
 
 CONFIG_FILE = "config.json"
+STATUS_FILE = "status.json"
 
 SERVER_URL = None
 EMPLOYEE = None
+heartbeat_timer = None
+
+def send_heartbeat():
+    try:
+        response = requests.post(
+            f"{SERVER_URL}/api/method/attendance_analytics.api.heartbeat",
+            params={
+                "employee": EMPLOYEE
+            }
+        )
+        if response.status_code == 200:
+            print("Heartbeat sent")
+            print(response.text)
+            server_status = get_server_status()
+            if server_status is False:
+                sync_ui(False)
+                tray.showMessage(
+                    "WFH Agent",
+                    "You were automatically checked out by the server.",
+                    QSystemTrayIcon.Information,
+                    3000
+                )
+            elif server_status is True:
+                sync_ui(True)
+    except Exception as e:
+        print(f"Heartbeat failed: {e}")
+
+def get_local_status():
+    if os.path.exists(STATUS_FILE):
+        try:
+            with open(STATUS_FILE) as f:
+                return json.load(f).get("checked_in", False)
+        except Exception:
+            return False
+    return False
+
+def get_server_status():
+    try:
+        response = requests.get(
+            f"{SERVER_URL}/api/method/attendance_analytics.api.get_status",
+            params={
+                "employee": EMPLOYEE
+            },
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.json().get("message", {}).get("checked_in", False)
+    except Exception:
+        pass
+    return None
+
+def sync_ui(checked_in):
+    save_status(checked_in)
+    if "check_in" in globals() and "check_out" in globals():
+        check_in.setVisible(not checked_in)
+        check_out.setVisible(checked_in)
+    
+    if checked_in:
+        if heartbeat_timer and not heartbeat_timer.isActive():
+            heartbeat_timer.start(30000)
+    else:
+        if heartbeat_timer and heartbeat_timer.isActive():
+            heartbeat_timer.stop()
+
+def save_status(checked_in):
+    with open(STATUS_FILE, "w") as f:
+        json.dump({"checked_in": checked_in}, f)
 
 if os.path.exists(CONFIG_FILE):
     with open(CONFIG_FILE) as f:
@@ -29,6 +97,7 @@ from PySide6.QtWidgets import (
 )
 
 from PySide6.QtGui import QAction, QIcon
+from PySide6.QtCore import QTimer
 
 class SetupWindow(QWidget):
     def __init__(self):
@@ -77,11 +146,17 @@ def load_config():
 
 def check_in_clicked():
     response = requests.post(
-        f"{SERVER_URL}/api/method/wfh_presence.api.checkin",
+        f"{SERVER_URL}/api/method/attendance_analytics.api.checkin",
         params={
             "employee": EMPLOYEE
         }
     )
+
+    save_status(True)
+    if heartbeat_timer:
+        heartbeat_timer.start(30000)
+    check_in.setVisible(False)
+    check_out.setVisible(True)
 
     tray.showMessage(
         "WFH Agent",
@@ -93,11 +168,17 @@ def check_in_clicked():
 
 def check_out_clicked():
     response = requests.post(
-        f"{SERVER_URL}/api/method/wfh_presence.api.checkout",
+        f"{SERVER_URL}/api/method/attendance_analytics.api.checkout",
         params={
             "employee": EMPLOYEE
         }
     )
+
+    save_status(False)
+    if heartbeat_timer:
+        heartbeat_timer.stop()
+    check_out.setVisible(False)
+    check_in.setVisible(True)
 
     tray.showMessage(
         "WFH Agent",
@@ -106,7 +187,32 @@ def check_out_clicked():
         3000
     )
 
+def exit_app():
+    if heartbeat_timer:
+        heartbeat_timer.stop()
+    
+    server_checked_in = get_server_status()
+    if server_checked_in is True:
+        try:
+            requests.post(
+                f"{SERVER_URL}/api/method/attendance_analytics.api.checkout",
+                params={
+                    "employee": EMPLOYEE
+                },
+                timeout=5
+            )
+            save_status(False)
+        except Exception:
+            pass
+    elif server_checked_in is False:
+        save_status(False)
+        
+    app.quit()
+
 app = QApplication(sys.argv)
+
+heartbeat_timer = QTimer()
+heartbeat_timer.timeout.connect(send_heartbeat)
 
 if not os.path.exists(CONFIG_FILE):
     setup_window = SetupWindow()
@@ -118,8 +224,15 @@ else:
 
     menu = QMenu()
 
+    # Server is source of truth on startup
+    is_checked_in = get_server_status()
+    if is_checked_in is None:
+        # Fallback to local status if server is unreachable
+        is_checked_in = get_local_status()
+
     check_in = QAction("Check In")
     check_out = QAction("Check Out")
+    
     exit_action = QAction("Exit")
 
     check_in.triggered.connect(check_in_clicked)
@@ -130,7 +243,10 @@ else:
     menu.addSeparator()
     menu.addAction(exit_action)
 
-    exit_action.triggered.connect(app.quit)
+    exit_action.triggered.connect(exit_app)
+
+    # Initial UI sync
+    sync_ui(is_checked_in)
 
     tray.setContextMenu(menu)
     tray.show()
