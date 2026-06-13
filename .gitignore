@@ -3,3 +3,9 @@ config.json
 status.json
 __pycache__/
 *.pyc
+
+# PyInstaller artifacts
+build/
+dist/
+*.spec
+WFH-Agent-Package/wfh-agent
