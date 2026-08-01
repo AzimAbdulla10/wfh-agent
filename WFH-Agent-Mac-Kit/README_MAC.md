@@ -1,38 +1,25 @@
 # WFH Agent - macOS Build Kit
 
-This folder contains everything needed to build and run the **WFH Agent** on macOS (Apple Silicon or Intel).
+This folder contains files to build and deploy the **WFH Agent** on macOS.
 
 ---
 
-## 🚀 How to Build & Run on macOS
+## Building and Running on macOS
 
-### Option 1: Quick Build Script
+### 1. Execute Build Script
 Open a Terminal in `WFH-Agent-Mac-Kit/` and run:
 ```bash
 ./build_mac.sh
 ```
-This script will install `PySide6`, `requests`, and `PyInstaller`, then build a standalone binary in `dist/wfh-agent`.
+This installs required dependencies (`PySide6`, `requests`, `pyinstaller`) and compiles `dist/WFH-Agent.app`.
 
-### Option 2: Manual Build
-```bash
-python3.11 -m pip install PySide6 requests pyinstaller
-pyinstaller --windowed --onefile --name wfh-agent main.py
-```
+### 2. Configure Auto-Launch at Login
+1. Open **System Settings** > **General** > **Login Items**.
+2. Under **Open at Login**, select **+** and add `dist/WFH-Agent.app`.
 
 ---
 
-## ⚙️ How It Works on macOS
+## Configuration Location
 
-- **Menu Bar Icon**: Runs in the macOS top Menu Bar (system tray).
-- **Persistent State**: Stores configuration in `~/Library/Application Support/wfh-agent/config.json`.
-- **Automatic Heartbeats**: Sends pulses every 30 seconds while checked in.
-- **Graceful Checkout**: Performs an auto-checkout API call if closed while checked in.
-
----
-
-## 🔧 macOS Permissions & Auto-Start
-
-- **Notifications**: Allow Notifications when prompted on first launch to receive auto-checkout alerts.
-- **Start on Login**: To launch automatically when logging into macOS:
-  1. Open **System Settings** > **General** > **Login Items**.
-  2. Click **+** under *Open at Login* and select the compiled `wfh-agent` app.
+Configuration and session state are persisted in:
+`~/Library/Application Support/wfh-agent/`
