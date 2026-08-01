@@ -22,6 +22,52 @@ SERVER_URL = None
 EMPLOYEE = None
 heartbeat_timer = None
 
+from PySide6.QtWidgets import (
+    QApplication, QSystemTrayIcon, QMenu, QWidget,
+    QVBoxLayout, QLabel, QLineEdit, QPushButton, QStyle
+)
+from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter, QColor, QBrush, QPen
+from PySide6.QtCore import QTimer, Qt
+
+def create_status_icon(checked_in):
+    """
+    Generates a high-resolution 32x32 QIcon dynamically:
+    - Base: Sleek desktop monitor icon
+    - Badge: Green dot (Checked In) or Red dot (Checked Out)
+    """
+    pixmap = QPixmap(32, 32)
+    pixmap.fill(Qt.transparent)
+    
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    
+    # 1. Draw base monitor screen (Dark Slate outline / light fill)
+    monitor_pen = QPen(QColor(50, 54, 58), 2)
+    monitor_brush = QBrush(QColor(235, 238, 242))
+    painter.setPen(monitor_pen)
+    painter.setBrush(monitor_brush)
+    
+    # Monitor screen rectangle
+    painter.drawRoundedRect(3, 4, 22, 15, 3, 3)
+    
+    # Monitor Stand / Base
+    painter.setBrush(QBrush(QColor(50, 54, 58)))
+    painter.setPen(Qt.NoPen)
+    painter.drawRect(12, 19, 4, 4)
+    painter.drawRect(8, 23, 12, 2)
+    
+    # 2. Draw Status Dot Badge (Bottom-Right corner)
+    # Green (#00E676) for Checked In, Red (#FF5252) for Checked Out
+    dot_color = QColor(0, 230, 118) if checked_in else QColor(255, 82, 82)
+    
+    # White border ring for high visibility on macOS dark/light menu bars
+    painter.setPen(QPen(QColor(255, 255, 255), 1.5))
+    painter.setBrush(QBrush(dot_color))
+    painter.drawEllipse(17, 15, 11, 11)
+    
+    painter.end()
+    return QIcon(pixmap)
+
 def get_server_status_details():
     """
     Queries Frappe API for check-in status and last log timestamp.
@@ -67,10 +113,14 @@ def save_status(checked_in, last_log_time=None, last_log_type=None):
         json.dump(data, f)
 
 def sync_ui(checked_in, last_log_time=None, last_log_type=None):
-    """Updates Status Indicator, Last Check-in timestamp, and Menu Actions."""
+    """Updates Menu Bar Dynamic Icon, Status Indicator, Last Check-in timestamp, and Menu Actions."""
     save_status(checked_in, last_log_time, last_log_type)
     
-    # 1. Update Status Indicator with Green / Red dot
+    # 0. Update Dynamic Menu Bar Tray Icon (Green Dot / Red Dot)
+    if "tray" in globals():
+        tray.setIcon(create_status_icon(checked_in))
+    
+    # 1. Update Status Indicator in Context Menu
     if "status_action" in globals():
         if checked_in:
             status_action.setText("🟢 Status: Checked In")
@@ -153,13 +203,6 @@ def load_config():
 if os.path.exists(CONFIG_FILE):
     load_config()
 
-from PySide6.QtWidgets import (
-    QApplication, QSystemTrayIcon, QMenu, QWidget,
-    QVBoxLayout, QLabel, QLineEdit, QPushButton, QStyle
-)
-from PySide6.QtGui import QAction, QIcon
-from PySide6.QtCore import QTimer
-
 class SetupWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -238,14 +281,16 @@ def exit_app():
 def start_tray_app():
     global tray, status_action, last_checkin_action, check_in, check_out, logout_action, exit_action
     tray = QSystemTrayIcon()
-    icon = QIcon.fromTheme("computer")
-    if icon.isNull():
-        icon = QApplication.style().standardIcon(QStyle.SP_ComputerIcon)
-    tray.setIcon(icon)
+    
+    # Set initial dynamic status icon
+    initial_status = get_server_status()
+    if initial_status is None:
+        initial_status = get_local_status()
+    tray.setIcon(create_status_icon(initial_status))
 
     menu = QMenu()
 
-    # HEADER INFORMATIONAL ITEMS (Disabled so they display as headers)
+    # HEADER INFORMATIONAL ITEMS
     status_action = QAction("🔴 Status: Checked Out")
     status_action.setEnabled(False)
     
