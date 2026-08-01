@@ -1,6 +1,6 @@
 # WFH Presence System - Documentation and Setup Guide
 
-This repository contains the **WFH Agent**, a desktop application built with Python (PySide6) designed to track employee presence for work-from-home scenarios. It integrates with the **Attendance Analytics** app on Frappe Framework v15.
+This repository contains the **WFH Agent**, a desktop application built with Python (PySide6) designed to track employee presence for work-from-home scenarios. It integrates with a Frappe server running Frappe Framework v15.
 
 ---
 
@@ -27,20 +27,18 @@ This repository contains the **WFH Agent**, a desktop application built with Pyt
 
 ## Server-Side Requirements (Frappe)
 
-The agent depends on the **Attendance Analytics** app being installed on the Frappe server.
+The agent depends on attendance API endpoints being available on your Frappe server.
 
 ### 1. API Endpoints
 The following whitelisted methods must be available:
-- `attendance_analytics.api.checkin`: Logs an 'IN' attendance record.
-- `attendance_analytics.api.checkout`: Logs an 'OUT' attendance record.
-- `attendance_analytics.api.heartbeat`: Updates the `last_heartbeat` timestamp for an active session.
-- `attendance_analytics.api.get_status`: Returns current server-side check-in status.
+- `/api/method/checkin`: Logs an 'IN' attendance record.
+- `/api/method/checkout`: Logs an 'OUT' attendance record.
+- `/api/method/heartbeat`: Updates the `last_heartbeat` timestamp for an active session.
+- `/api/method/get_status`: Returns current server-side check-in status.
 
 ### 2. Automatic Checkout (Scheduler)
 For the system to detect disconnected agents, the Frappe scheduler must be active:
-- **Task**: `attendance_analytics.tasks.check_missed_heartbeats`
-- **Cron**: Configured to run periodically (`*/1 * * * *`).
-- **Behavior**: If an agent misses heartbeats beyond the threshold, the task creates an 'OUT' record and closes the session.
+- **Behavior**: If an agent misses heartbeats beyond the threshold, the scheduled task creates an 'OUT' record and closes the session.
 
 ---
 

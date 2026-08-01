@@ -1,6 +1,6 @@
 # WFH Agent - macOS Build Kit
 
-This folder contains files to build and deploy the **WFH Agent** on macOS.
+This folder contains files to build and deploy the WFH Agent on macOS.
 
 ---
 
