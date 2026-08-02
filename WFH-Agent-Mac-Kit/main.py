@@ -23,56 +23,189 @@ EMPLOYEE = None
 heartbeat_timer = None
 
 from PySide6.QtWidgets import (
-    QApplication, QSystemTrayIcon, QMenu, QWidget,
-    QVBoxLayout, QLabel, QLineEdit, QPushButton, QStyle
+    QApplication, QSystemTrayIcon, QMenu, QWidget, QWidgetAction,
+    QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QStyle
 )
-from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter, QColor, QBrush, QPen
+from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter, QColor, QBrush, QPen, QFont
 from PySide6.QtCore import QTimer, Qt
+
+# --- NATIVE VECTOR ICON GENERATION ---
 
 def create_status_icon(checked_in):
     """
-    Generates a high-resolution 32x32 QIcon dynamically:
-    - Base: Sleek desktop monitor icon
-    - Badge: Green dot (Checked In) or Red dot (Checked Out)
+    Generates a crisp 32x32 Retina-ready QIcon dynamically:
+    - Base: Minimalist Apple-style monitor display icon
+    - Badge: Vibrant Apple System Green (#34C759) or Red (#FF3B30) dot
     """
-    pixmap = QPixmap(32, 32)
+    pixmap = QPixmap(64, 64)
+    pixmap.setDevicePixelRatio(2.0)
     pixmap.fill(Qt.transparent)
     
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.Antialiasing)
     
-    # 1. Draw base monitor screen (Dark Slate outline / light fill)
-    monitor_pen = QPen(QColor(50, 54, 58), 2)
-    monitor_brush = QBrush(QColor(235, 238, 242))
+    # 1. Draw Monitor Display Outline (Dark Slate Gray)
+    monitor_pen = QPen(QColor(50, 54, 58), 2.2)
+    monitor_brush = QBrush(QColor(245, 247, 250))
     painter.setPen(monitor_pen)
     painter.setBrush(monitor_brush)
     
-    # Monitor screen rectangle
-    painter.drawRoundedRect(3, 4, 22, 15, 3, 3)
+    # Screen Frame
+    painter.drawRoundedRect(4, 6, 24, 16, 3.5, 3.5)
     
-    # Monitor Stand / Base
+    # Screen Stand & Base
     painter.setBrush(QBrush(QColor(50, 54, 58)))
     painter.setPen(Qt.NoPen)
-    painter.drawRect(12, 19, 4, 4)
-    painter.drawRect(8, 23, 12, 2)
+    painter.drawRect(14, 22, 4, 5)
+    painter.drawRoundedRect(9, 26, 14, 2.5, 1, 1)
     
-    # 2. Draw Status Dot Badge (Bottom-Right corner)
-    # Green (#00E676) for Checked In, Red (#FF5252) for Checked Out
-    dot_color = QColor(0, 230, 118) if checked_in else QColor(255, 82, 82)
+    # 2. Draw Status Dot Badge (Bottom-Right Corner)
+    dot_color = QColor(52, 199, 89) if checked_in else QColor(255, 59, 48)
     
-    # White border ring for high visibility on macOS dark/light menu bars
-    painter.setPen(QPen(QColor(255, 255, 255), 1.5))
+    # Outer white ring for contrast on both dark and light macOS Menu Bars
+    painter.setPen(QPen(QColor(255, 255, 255), 2))
     painter.setBrush(QBrush(dot_color))
-    painter.drawEllipse(17, 15, 11, 11)
+    painter.drawEllipse(18, 17, 12, 12)
     
     painter.end()
     return QIcon(pixmap)
 
+
+def create_action_icon(symbol_type):
+    """Generates clean SF Symbol style vector icons for menu items."""
+    pixmap = QPixmap(36, 36)
+    pixmap.setDevicePixelRatio(2.0)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    
+    if symbol_type == "checkin":
+        # Green Circle with White Checkmark
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(52, 199, 89)))
+        painter.drawEllipse(1, 1, 16, 16)
+        
+        pen = QPen(QColor(255, 255, 255), 2.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(5, 9, 8, 12)
+        painter.drawLine(8, 12, 13, 6)
+        
+    elif symbol_type == "checkout":
+        # Red Circle with White Cross
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(255, 59, 48)))
+        painter.drawEllipse(1, 1, 16, 16)
+        
+        pen = QPen(QColor(255, 255, 255), 2.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(6, 6, 12, 12)
+        painter.drawLine(12, 6, 6, 12)
+        
+    elif symbol_type == "logout":
+        # Neutral Gear / Lock Icon
+        pen = QPen(QColor(142, 142, 147), 1.8)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawEllipse(3, 3, 12, 12)
+        painter.drawEllipse(7, 7, 4, 4)
+
+    elif symbol_type == "exit":
+        # Power / Quit Icon
+        pen = QPen(QColor(142, 142, 147), 2.0)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.drawArc(3, 4, 12, 12, 45 * 16, 270 * 16)
+        painter.drawLine(9, 2, 9, 8)
+        
+    painter.end()
+    return QIcon(pixmap)
+
+
+# --- NATIVE MAC-STYLE STATUS HEADER CARD WIDGET ---
+
+class StatusHeaderWidget(QWidget):
+    """
+    Custom Header Widget embedded in QMenu using QWidgetAction.
+    Displays:
+    - Status Badge (Green/Red dot indicator)
+    - Status Title ('Working' or 'Checked Out')
+    - Secondary Metadata ('Last Punch: 10:15 AM (IN)')
+    - Employee ID pill
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(4)
+        
+        # Row 1: Status Dot + Main Status Label
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
+        
+        self.dot_label = QLabel()
+        self.dot_label.setFixedSize(10, 10)
+        
+        self.status_title = QLabel("Checked Out")
+        font_title = QFont()
+        font_title.setWeight(QFont.Bold)
+        font_title.setPointSize(13)
+        self.status_title.setFont(font_title)
+        
+        row1.addWidget(self.dot_label)
+        row1.addWidget(self.status_title)
+        row1.addStretch()
+        
+        # Employee ID Tag
+        self.emp_tag = QLabel()
+        self.emp_tag.setStyleSheet("""
+            color: #8E8E93;
+            font-size: 11px;
+            font-weight: 500;
+            background-color: rgba(142, 142, 147, 0.12);
+            border-radius: 4px;
+            padding: 2px 6px;
+        """)
+        row1.addWidget(self.emp_tag)
+        
+        # Row 2: Secondary Metadata (Last Punch)
+        self.subtitle_label = QLabel("Last Log: None")
+        self.subtitle_label.setStyleSheet("color: #8E8E93; font-size: 11px;")
+        
+        layout.addLayout(row1)
+        layout.addWidget(self.subtitle_label)
+        self.setLayout(layout)
+        
+    def update_status(self, checked_in, last_log_time=None, last_log_type=None, employee=None):
+        dot_color = "#34C759" if checked_in else "#FF3B30"
+        self.dot_label.setStyleSheet(f"""
+            background-color: {dot_color};
+            border-radius: 5px;
+        """)
+        
+        self.status_title.setText("Working" if checked_in else "Checked Out")
+        self.status_title.setStyleSheet("color: #34C759;" if checked_in else "color: #FF3B30;")
+        
+        if employee:
+            self.emp_tag.setText(f"ID: {employee}")
+            self.emp_tag.setVisible(True)
+        else:
+            self.emp_tag.setVisible(False)
+            
+        if last_log_time:
+            type_str = f" ({last_log_type})" if last_log_type else ""
+            self.subtitle_label.setText(f"Last Punch: {last_log_time}{type_str}")
+        else:
+            self.subtitle_label.setText("Last Punch: No record")
+
+
+# --- BACKEND API COMMUNICATIONS ---
+
 def get_server_status_details():
-    """
-    Queries Frappe API for check-in status and last log timestamp.
-    Returns dict: {'checked_in': bool, 'last_log_type': str, 'last_log_time': str}
-    """
     try:
         response = requests.get(
             f"{SERVER_URL}/api/method/attendance_analytics.api.get_status",
@@ -113,30 +246,17 @@ def save_status(checked_in, last_log_time=None, last_log_type=None):
         json.dump(data, f)
 
 def sync_ui(checked_in, last_log_time=None, last_log_type=None):
-    """Updates Menu Bar Dynamic Icon, Status Indicator, Last Check-in timestamp, and Menu Actions."""
     save_status(checked_in, last_log_time, last_log_type)
     
-    # 0. Update Dynamic Menu Bar Tray Icon (Green Dot / Red Dot)
+    # 0. Update Dynamic Menu Bar Tray Icon
     if "tray" in globals():
         tray.setIcon(create_status_icon(checked_in))
     
-    # 1. Update Status Indicator in Context Menu
-    if "status_action" in globals():
-        if checked_in:
-            status_action.setText("🟢 Status: Checked In")
-        else:
-            status_action.setText("🔴 Status: Checked Out")
+    # 1. Update Header Widget
+    if "header_widget" in globals():
+        header_widget.update_status(checked_in, last_log_time, last_log_type, EMPLOYEE)
             
-    # 2. Update Last Check-in timestamp header
-    if "last_checkin_action" in globals():
-        if last_log_time:
-            log_label = f" (Punch: {last_log_type})" if last_log_type else ""
-            last_checkin_action.setText(f"Last Log: {last_log_time}{log_label}")
-            last_checkin_action.setVisible(True)
-        else:
-            last_checkin_action.setVisible(False)
-            
-    # 3. Update Action Buttons & Log Out State
+    # 2. Update Action Buttons & Log Out State
     if "check_in" in globals() and "check_out" in globals():
         check_in.setVisible(not checked_in)
         check_out.setVisible(checked_in)
@@ -144,7 +264,7 @@ def sync_ui(checked_in, last_log_time=None, last_log_type=None):
     if "logout_action" in globals():
         logout_action.setEnabled(not checked_in)
     
-    # 4. Manage Heartbeat Timer
+    # 3. Manage Heartbeat Timer
     if checked_in:
         if heartbeat_timer and not heartbeat_timer.isActive():
             heartbeat_timer.start(30000)
@@ -153,7 +273,6 @@ def sync_ui(checked_in, last_log_time=None, last_log_type=None):
             heartbeat_timer.stop()
 
 def fetch_and_sync():
-    """Fetches full server status and updates UI."""
     info = get_server_status_details()
     if info is not None:
         sync_ui(info["checked_in"], info.get("last_log_time"), info.get("last_log_type"))
@@ -203,12 +322,53 @@ def load_config():
 if os.path.exists(CONFIG_FILE):
     load_config()
 
+
+# --- SETUP WINDOW (POLISHED macOS HIG DIALOG) ---
+
 class SetupWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("WFH Agent Setup")
-        self.resize(320, 160)
+        self.setFixedSize(340, 210)
+        self.setStyleSheet("""
+            QWidget {
+                font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+                font-size: 13px;
+                color: #1D1D1F;
+            }
+            QLabel {
+                font-weight: 500;
+                color: #3A3A3C;
+            }
+            QLineEdit {
+                border: 1px solid #C7C7CC;
+                border-radius: 6px;
+                padding: 6px 10px;
+                background: #FFFFFF;
+                selection-background-color: #007AFF;
+            }
+            QLineEdit:focus {
+                border: 2px solid #007AFF;
+            }
+            QPushButton {
+                background-color: #007AFF;
+                color: #FFFFFF;
+                font-weight: 600;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #0062CC;
+            }
+            QPushButton:pressed {
+                background-color: #004999;
+            }
+        """)
+        
         layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
 
         layout.addWidget(QLabel("Server URL:"))
         self.server_input = QLineEdit()
@@ -220,6 +380,7 @@ class SetupWindow(QWidget):
         self.employee_input.setPlaceholderText("80")
         layout.addWidget(self.employee_input)
 
+        layout.addSpacing(6)
         save_button = QPushButton("Save & Start")
         save_button.clicked.connect(self.save_config)
         layout.addWidget(save_button)
@@ -235,6 +396,9 @@ class SetupWindow(QWidget):
         load_config()
         self.close()
         start_tray_app()
+
+
+# --- TRAY APP INITIALIZATION ---
 
 def check_in_clicked():
     try:
@@ -279,7 +443,7 @@ def exit_app():
     app.quit()
 
 def start_tray_app():
-    global tray, status_action, last_checkin_action, check_in, check_out, logout_action, exit_action
+    global tray, header_widget, check_in, check_out, logout_action, exit_action
     tray = QSystemTrayIcon()
     
     # Set initial dynamic status icon
@@ -289,31 +453,34 @@ def start_tray_app():
     tray.setIcon(create_status_icon(initial_status))
 
     menu = QMenu()
-
-    # HEADER INFORMATIONAL ITEMS
-    status_action = QAction("🔴 Status: Checked Out")
-    status_action.setEnabled(False)
     
-    last_checkin_action = QAction("Last Log: Unknown")
-    last_checkin_action.setEnabled(False)
+    # 1. EMBEDDED NATIVE STATUS HEADER CARD
+    header_widget = StatusHeaderWidget()
+    header_action = QWidgetAction(menu)
+    header_action.setDefaultWidget(header_widget)
+    menu.addAction(header_action)
+    
+    menu.addSeparator()
 
-    check_in = QAction("Check In")
-    check_out = QAction("Check Out")
-    logout_action = QAction("Log Out")
-    exit_action = QAction("Exit")
+    # 2. PRIMARY ACTIONS WITH SF SYMBOL STYLE ICONS
+    check_in = QAction(create_action_icon("checkin"), "Check In", menu)
+    check_out = QAction(create_action_icon("checkout"), "Check Out", menu)
 
     check_in.triggered.connect(check_in_clicked)
     check_out.triggered.connect(check_out_clicked)
+
+    menu.addAction(check_in)
+    menu.addAction(check_out)
+    
+    menu.addSeparator()
+
+    # 3. ACCOUNT & SYSTEM ACTIONS WITH ICONS
+    logout_action = QAction(create_action_icon("logout"), "Log Out...", menu)
+    exit_action = QAction(create_action_icon("exit"), "Quit WFH Agent", menu)
+
     logout_action.triggered.connect(log_out_clicked)
     exit_action.triggered.connect(exit_app)
 
-    # Build Context Menu
-    menu.addAction(status_action)
-    menu.addAction(last_checkin_action)
-    menu.addSeparator()
-    menu.addAction(check_in)
-    menu.addAction(check_out)
-    menu.addSeparator()
     menu.addAction(logout_action)
     menu.addAction(exit_action)
 
