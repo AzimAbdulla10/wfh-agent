@@ -24,183 +24,304 @@ heartbeat_timer = None
 
 from PySide6.QtWidgets import (
     QApplication, QSystemTrayIcon, QMenu, QWidget, QWidgetAction,
-    QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QStyle
+    QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QFrame, QStyle
 )
 from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter, QColor, QBrush, QPen, QFont
 from PySide6.QtCore import QTimer, Qt
 
-# --- NATIVE VECTOR ICON GENERATION ---
+# --- RETINA VECTOR ICON GENERATOR ---
 
 def create_status_icon(checked_in):
     """
-    Generates a crisp 32x32 Retina-ready QIcon dynamically:
-    - Base: Minimalist Apple-style monitor display icon
-    - Badge: Vibrant Apple System Green (#34C759) or Red (#FF3B30) dot
+    Generates a crisp 36x36 px Retina (2x DPI) Menu Bar QIcon:
+    - Base: Minimalist Apple-style desktop display outline
+    - Badge: Smooth status dot (Apple System Green #34C759 or System Red #FF3B30)
     """
-    pixmap = QPixmap(64, 64)
-    pixmap.setDevicePixelRatio(2.0)
-    pixmap.fill(Qt.transparent)
-    
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing)
-    
-    # 1. Draw Monitor Display Outline (Dark Slate Gray)
-    monitor_pen = QPen(QColor(50, 54, 58), 2.2)
-    monitor_brush = QBrush(QColor(245, 247, 250))
-    painter.setPen(monitor_pen)
-    painter.setBrush(monitor_brush)
-    
-    # Screen Frame
-    painter.drawRoundedRect(4, 6, 24, 16, 3.5, 3.5)
-    
-    # Screen Stand & Base
-    painter.setBrush(QBrush(QColor(50, 54, 58)))
-    painter.setPen(Qt.NoPen)
-    painter.drawRect(14, 22, 4, 5)
-    painter.drawRoundedRect(9, 26, 14, 2.5, 1, 1)
-    
-    # 2. Draw Status Dot Badge (Bottom-Right Corner)
-    dot_color = QColor(52, 199, 89) if checked_in else QColor(255, 59, 48)
-    
-    # Outer white ring for contrast on both dark and light macOS Menu Bars
-    painter.setPen(QPen(QColor(255, 255, 255), 2))
-    painter.setBrush(QBrush(dot_color))
-    painter.drawEllipse(18, 17, 12, 12)
-    
-    painter.end()
-    return QIcon(pixmap)
-
-
-def create_action_icon(symbol_type):
-    """Generates clean SF Symbol style vector icons for menu items."""
     pixmap = QPixmap(36, 36)
     pixmap.setDevicePixelRatio(2.0)
     pixmap.fill(Qt.transparent)
+    
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.Antialiasing)
     
-    if symbol_type == "checkin":
-        # Green Circle with White Checkmark
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QBrush(QColor(52, 199, 89)))
-        painter.drawEllipse(1, 1, 16, 16)
-        
-        pen = QPen(QColor(255, 255, 255), 2.0)
-        pen.setCapStyle(Qt.RoundCap)
-        painter.setPen(pen)
-        painter.drawLine(5, 9, 8, 12)
-        painter.drawLine(8, 12, 13, 6)
-        
-    elif symbol_type == "checkout":
-        # Red Circle with White Cross
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QBrush(QColor(255, 59, 48)))
-        painter.drawEllipse(1, 1, 16, 16)
-        
-        pen = QPen(QColor(255, 255, 255), 2.0)
-        pen.setCapStyle(Qt.RoundCap)
-        painter.setPen(pen)
-        painter.drawLine(6, 6, 12, 12)
-        painter.drawLine(12, 6, 6, 12)
-        
-    elif symbol_type == "logout":
-        # Neutral Gear / Lock Icon
-        pen = QPen(QColor(142, 142, 147), 1.8)
-        painter.setPen(pen)
-        painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(3, 3, 12, 12)
-        painter.drawEllipse(7, 7, 4, 4)
-
-    elif symbol_type == "exit":
-        # Power / Quit Icon
-        pen = QPen(QColor(142, 142, 147), 2.0)
-        pen.setCapStyle(Qt.RoundCap)
-        painter.setPen(pen)
-        painter.drawArc(3, 4, 12, 12, 45 * 16, 270 * 16)
-        painter.drawLine(9, 2, 9, 8)
-        
+    # 1. Draw Display Monitor Frame
+    monitor_pen = QPen(QColor(52, 56, 60), 1.8)
+    monitor_brush = QBrush(QColor(246, 248, 250))
+    painter.setPen(monitor_pen)
+    painter.setBrush(monitor_brush)
+    
+    painter.drawRoundedRect(2, 3, 14, 10, 2.0, 2.0)
+    
+    # Display Stand
+    painter.setBrush(QBrush(QColor(52, 56, 60)))
+    painter.setPen(Qt.NoPen)
+    painter.drawRect(8, 13, 2, 2)
+    painter.drawRoundedRect(5, 15, 8, 1.5, 0.5, 0.5)
+    
+    # 2. Draw Status Indicator Badge
+    dot_color = QColor(52, 199, 89) if checked_in else QColor(255, 59, 48)
+    
+    painter.setPen(QPen(QColor(255, 255, 255), 1.2))
+    painter.setBrush(QBrush(dot_color))
+    painter.drawEllipse(11, 10, 6.5, 6.5)
+    
     painter.end()
     return QIcon(pixmap)
 
 
-# --- NATIVE MAC-STYLE STATUS HEADER CARD WIDGET ---
+# --- PREMIUM POPPANEL CARD WIDGET ---
 
-class StatusHeaderWidget(QWidget):
+class ModernPopoverCard(QWidget):
     """
-    Custom Header Widget embedded in QMenu using QWidgetAction.
-    Displays:
-    - Status Badge (Green/Red dot indicator)
-    - Status Title ('Working' or 'Checked Out')
-    - Secondary Metadata ('Last Punch: 10:15 AM (IN)')
-    - Employee ID pill
+    Polished macOS Popover Panel Widget inspired by Stats, Ice, and Raycast:
+    - Top Header Bar with App Name & Dynamic Status Badge
+    - Inset Glassmorphic Info Card with Spacing Rhythm & Icons
+    - Prominent Primary Action Card Button with Hover Effects
+    - Subtle Footer Controls
     """
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.is_checked_in = False
         self.init_ui()
         
     def init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(4)
+        self.setFixedWidth(280)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(14, 14, 14, 14)
+        main_layout.setSpacing(12)
         
-        # Row 1: Status Dot + Main Status Label
-        row1 = QHBoxLayout()
-        row1.setSpacing(8)
+        # 1. HEADER ROW: App Title & Dynamic Status Pill
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.dot_label = QLabel()
-        self.dot_label.setFixedSize(10, 10)
-        
-        self.status_title = QLabel("Checked Out")
+        self.app_title = QLabel("WFH Agent")
         font_title = QFont()
+        font_title.setFamilies(["-apple-system", "SF Pro Display", "Helvetica Neue"])
         font_title.setWeight(QFont.Bold)
-        font_title.setPointSize(13)
-        self.status_title.setFont(font_title)
+        font_title.setPointSize(14)
+        self.app_title.setFont(font_title)
+        self.app_title.setStyleSheet("color: #1D1D1F;")
         
-        row1.addWidget(self.dot_label)
-        row1.addWidget(self.status_title)
-        row1.addStretch()
-        
-        # Employee ID Tag
-        self.emp_tag = QLabel()
-        self.emp_tag.setStyleSheet("""
+        self.status_pill = QLabel("● CHECKED OUT")
+        self.status_pill.setStyleSheet("""
             color: #8E8E93;
-            font-size: 11px;
-            font-weight: 500;
-            background-color: rgba(142, 142, 147, 0.12);
-            border-radius: 4px;
-            padding: 2px 6px;
-        """)
-        row1.addWidget(self.emp_tag)
-        
-        # Row 2: Secondary Metadata (Last Punch)
-        self.subtitle_label = QLabel("Last Log: None")
-        self.subtitle_label.setStyleSheet("color: #8E8E93; font-size: 11px;")
-        
-        layout.addLayout(row1)
-        layout.addWidget(self.subtitle_label)
-        self.setLayout(layout)
-        
-    def update_status(self, checked_in, last_log_time=None, last_log_type=None, employee=None):
-        dot_color = "#34C759" if checked_in else "#FF3B30"
-        self.dot_label.setStyleSheet(f"""
-            background-color: {dot_color};
-            border-radius: 5px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            background-color: rgba(142, 142, 147, 0.15);
+            border-radius: 10px;
+            padding: 3px 9px;
         """)
         
-        self.status_title.setText("Working" if checked_in else "Checked Out")
-        self.status_title.setStyleSheet("color: #34C759;" if checked_in else "color: #FF3B30;")
+        header_layout.addWidget(self.app_title)
+        header_layout.addStretch()
+        header_layout.addWidget(self.status_pill)
         
-        if employee:
-            self.emp_tag.setText(f"ID: {employee}")
-            self.emp_tag.setVisible(True)
+        # 2. INSET SESSION METADATA CARD
+        self.info_card = QFrame()
+        self.info_card.setStyleSheet("""
+            QFrame {
+                background-color: rgba(0, 0, 0, 0.03);
+                border: 1px solid rgba(0, 0, 0, 0.06);
+                border-radius: 10px;
+            }
+        """)
+        card_layout = QVBoxLayout(self.info_card)
+        card_layout.setContentsMargins(12, 10, 12, 10)
+        card_layout.setSpacing(6)
+        
+        # Row A: Last Punch
+        row_a = QHBoxLayout()
+        row_a.setSpacing(6)
+        icon_clock = QLabel("🕒")
+        icon_clock.setStyleSheet("font-size: 11px; border: none; background: transparent;")
+        self.last_punch_label = QLabel("Last Punch: No record")
+        self.last_punch_label.setStyleSheet("color: #48484A; font-size: 11px; font-weight: 500; border: none; background: transparent;")
+        row_a.addWidget(icon_clock)
+        row_a.addWidget(self.last_punch_label)
+        row_a.addStretch()
+        
+        # Row B: Employee ID
+        row_b = QHBoxLayout()
+        row_b.setSpacing(6)
+        icon_user = QLabel("👤")
+        icon_user.setStyleSheet("font-size: 11px; border: none; background: transparent;")
+        self.emp_id_label = QLabel("Employee ID: --")
+        self.emp_id_label.setStyleSheet("color: #8E8E93; font-size: 11px; font-weight: 400; border: none; background: transparent;")
+        row_b.addWidget(icon_user)
+        row_b.addWidget(self.emp_id_label)
+        row_b.addStretch()
+        
+        card_layout.addLayout(row_a)
+        card_layout.addLayout(row_b)
+        
+        # 3. PROMINENT PRIMARY ACTION BUTTON
+        self.action_btn = QPushButton("Check In Now")
+        self.action_btn.setFixedHeight(38)
+        self.action_btn.setCursor(Qt.PointingHandCursor)
+        self.action_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #34C759;
+                color: #FFFFFF;
+                font-family: -apple-system, "SF Pro Text", sans-serif;
+                font-size: 13px;
+                font-weight: 600;
+                border: none;
+                border-radius: 8px;
+                padding: 0px 16px;
+            }
+            QPushButton:hover {
+                background-color: #2FB34F;
+            }
+            QPushButton:pressed {
+                background-color: #289E45;
+            }
+        """)
+        self.action_btn.clicked.connect(self.handle_primary_action)
+        
+        # 4. FOOTER CONTROLS ROW
+        footer_layout = QHBoxLayout()
+        footer_layout.setContentsMargins(2, 2, 2, 0)
+        
+        self.logout_btn = QPushButton("Log Out...")
+        self.logout_btn.setCursor(Qt.PointingHandCursor)
+        self.logout_btn.setStyleSheet("""
+            QPushButton {
+                color: #8E8E93;
+                font-size: 11px;
+                font-weight: 500;
+                border: none;
+                background: transparent;
+                text-align: left;
+            }
+            QPushButton:hover {
+                color: #1D1D1F;
+            }
+        """)
+        self.logout_btn.clicked.connect(log_out_clicked)
+        
+        self.quit_btn = QPushButton("Quit Agent")
+        self.quit_btn.setCursor(Qt.PointingHandCursor)
+        self.quit_btn.setStyleSheet("""
+            QPushButton {
+                color: #8E8E93;
+                font-size: 11px;
+                font-weight: 500;
+                border: none;
+                background: transparent;
+                text-align: right;
+            }
+            QPushButton:hover {
+                color: #FF3B30;
+            }
+        """)
+        self.quit_btn.clicked.connect(exit_app)
+        
+        footer_layout.addWidget(self.logout_btn)
+        footer_layout.addStretch()
+        footer_layout.addWidget(self.quit_btn)
+        
+        main_layout.addLayout(header_layout)
+        main_layout.addWidget(self.info_card)
+        main_layout.addWidget(self.action_btn)
+        main_layout.addLayout(footer_layout)
+        self.setLayout(main_layout)
+        
+    def handle_primary_action(self):
+        if self.is_checked_in:
+            check_out_clicked()
         else:
-            self.emp_tag.setVisible(False)
+            check_in_clicked()
+
+    def update_status(self, checked_in, last_log_time=None, last_log_type=None, employee=None):
+        self.is_checked_in = checked_in
+        
+        if checked_in:
+            self.status_pill.setText("● WORKING")
+            self.status_pill.setStyleSheet("""
+                color: #34C759;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                background-color: rgba(52, 199, 89, 0.15);
+                border-radius: 10px;
+                padding: 3px 9px;
+            """)
+            self.action_btn.setText("Check Out")
+            self.action_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #FF3B30;
+                    color: #FFFFFF;
+                    font-family: -apple-system, "SF Pro Text", sans-serif;
+                    font-size: 13px;
+                    font-weight: 600;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 0px 16px;
+                }
+                QPushButton:hover {
+                    background-color: #E0332B;
+                }
+                QPushButton:pressed {
+                    background-color: #C22B24;
+                }
+            """)
+            self.logout_btn.setEnabled(False)
+            self.logout_btn.setStyleSheet("color: #C7C7CC; font-size: 11px; font-weight: 500; border: none; background: transparent;")
+        else:
+            self.status_pill.setText("● CHECKED OUT")
+            self.status_pill.setStyleSheet("""
+                color: #8E8E93;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                background-color: rgba(142, 142, 147, 0.15);
+                border-radius: 10px;
+                padding: 3px 9px;
+            """)
+            self.action_btn.setText("Check In Now")
+            self.action_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #34C759;
+                    color: #FFFFFF;
+                    font-family: -apple-system, "SF Pro Text", sans-serif;
+                    font-size: 13px;
+                    font-weight: 600;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 0px 16px;
+                }
+                QPushButton:hover {
+                    background-color: #2FB34F;
+                }
+                QPushButton:pressed {
+                    background-color: #289E45;
+                }
+            """)
+            self.logout_btn.setEnabled(True)
+            self.logout_btn.setStyleSheet("""
+                QPushButton {
+                    color: #8E8E93;
+                    font-size: 11px;
+                    font-weight: 500;
+                    border: none;
+                    background: transparent;
+                }
+                QPushButton:hover {
+                    color: #1D1D1F;
+                }
+            """)
             
         if last_log_time:
             type_str = f" ({last_log_type})" if last_log_type else ""
-            self.subtitle_label.setText(f"Last Punch: {last_log_time}{type_str}")
+            self.last_punch_label.setText(f"Last Punch: {last_log_time}{type_str}")
         else:
-            self.subtitle_label.setText("Last Punch: No record")
+            self.last_punch_label.setText("Last Punch: No record")
+            
+        if employee:
+            self.emp_id_label.setText(f"Employee ID: {employee}")
+        else:
+            self.emp_id_label.setText("Employee ID: Unknown")
 
 
 # --- BACKEND API COMMUNICATIONS ---
@@ -252,19 +373,11 @@ def sync_ui(checked_in, last_log_time=None, last_log_type=None):
     if "tray" in globals():
         tray.setIcon(create_status_icon(checked_in))
     
-    # 1. Update Header Widget
-    if "header_widget" in globals():
-        header_widget.update_status(checked_in, last_log_time, last_log_type, EMPLOYEE)
-            
-    # 2. Update Action Buttons & Log Out State
-    if "check_in" in globals() and "check_out" in globals():
-        check_in.setVisible(not checked_in)
-        check_out.setVisible(checked_in)
-        
-    if "logout_action" in globals():
-        logout_action.setEnabled(not checked_in)
+    # 1. Update Modern Popover Card Widget
+    if "popover_widget" in globals():
+        popover_widget.update_status(checked_in, last_log_time, last_log_type, EMPLOYEE)
     
-    # 3. Manage Heartbeat Timer
+    # 2. Manage Heartbeat Timer
     if checked_in:
         if heartbeat_timer and not heartbeat_timer.isActive():
             heartbeat_timer.start(30000)
@@ -341,7 +454,7 @@ class SetupWindow(QWidget):
                 color: #3A3A3C;
             }
             QLineEdit {
-                border: 1px solid #C7C7CC;
+                border: 1px solid rgba(0, 0, 0, 0.15);
                 border-radius: 6px;
                 padding: 6px 10px;
                 background: #FFFFFF;
@@ -443,7 +556,7 @@ def exit_app():
     app.quit()
 
 def start_tray_app():
-    global tray, header_widget, check_in, check_out, logout_action, exit_action
+    global tray, popover_widget
     tray = QSystemTrayIcon()
     
     # Set initial dynamic status icon
@@ -454,35 +567,11 @@ def start_tray_app():
 
     menu = QMenu()
     
-    # 1. EMBEDDED NATIVE STATUS HEADER CARD
-    header_widget = StatusHeaderWidget()
-    header_action = QWidgetAction(menu)
-    header_action.setDefaultWidget(header_widget)
-    menu.addAction(header_action)
-    
-    menu.addSeparator()
-
-    # 2. PRIMARY ACTIONS WITH SF SYMBOL STYLE ICONS
-    check_in = QAction(create_action_icon("checkin"), "Check In", menu)
-    check_out = QAction(create_action_icon("checkout"), "Check Out", menu)
-
-    check_in.triggered.connect(check_in_clicked)
-    check_out.triggered.connect(check_out_clicked)
-
-    menu.addAction(check_in)
-    menu.addAction(check_out)
-    
-    menu.addSeparator()
-
-    # 3. ACCOUNT & SYSTEM ACTIONS WITH ICONS
-    logout_action = QAction(create_action_icon("logout"), "Log Out...", menu)
-    exit_action = QAction(create_action_icon("exit"), "Quit WFH Agent", menu)
-
-    logout_action.triggered.connect(log_out_clicked)
-    exit_action.triggered.connect(exit_app)
-
-    menu.addAction(logout_action)
-    menu.addAction(exit_action)
+    # EMBEDDED MODERN POPOVER CARD WIDGET
+    popover_widget = ModernPopoverCard()
+    popover_action = QWidgetAction(menu)
+    popover_action.setDefaultWidget(popover_widget)
+    menu.addAction(popover_action)
 
     tray.setContextMenu(menu)
     tray.show()
